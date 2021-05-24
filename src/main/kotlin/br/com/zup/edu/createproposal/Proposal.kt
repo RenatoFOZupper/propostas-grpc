@@ -9,6 +9,7 @@ import javax.persistence.GeneratedValue
 import javax.persistence.Id
 import javax.validation.constraints.Email
 import javax.validation.constraints.NotBlank
+import javax.validation.constraints.NotNull
 import javax.validation.constraints.PositiveOrZero
 
 @Entity
@@ -31,7 +32,7 @@ class Proposal(
     val address: String,
 
     @field: PositiveOrZero
-    @field: NotBlank
+    @field: NotNull
     @Column(unique = false)
     val salary: BigDecimal
 ) {
@@ -39,6 +40,7 @@ class Proposal(
     @GeneratedValue
     val id: UUID? = null
 
+    @Column(unique = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now()
 
 }
