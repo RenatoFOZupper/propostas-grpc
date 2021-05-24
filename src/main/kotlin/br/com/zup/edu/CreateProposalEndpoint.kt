@@ -7,10 +7,12 @@ import com.google.protobuf.Timestamp
 import com.google.rpc.BadRequest
 import com.google.rpc.Code
 import io.grpc.Status
+import io.grpc.StatusRuntimeException
 import io.grpc.protobuf.StatusProto
 import io.grpc.stub.StreamObserver
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Singleton
 import javax.transaction.Transactional
@@ -36,17 +38,20 @@ open class CreateProposalEndpoint(val repository: ProposalRepository) : Proposta
 
         LOGGER.info("new request: $request")
 
+/*  Primeiro modelo - Converte o request para um objeto proposal dentro do endpoint grpc
         val proposal = Proposal(name = request.name,
                                 document = request.document,
                                 email = request.email,
                                 address = request.address,
                                 salary = BigDecimal(request.salary))
+*/
 
-        try {
-            repository.save(proposal)
+        val proposal = try {
+            repository.save(request.toModel()) // extension function
         } catch (e: ConstraintViolationException) {
             LOGGER.error("Erro de validação: ${e.message}")
 
+/*      Primeiro modelo - tratando errors
             val violations = e.constraintViolations.map {
                 BadRequest.FieldViolation.newBuilder()
                                         .setField(it.propertyPath.last().name) //save.entity.document
@@ -62,21 +67,17 @@ open class CreateProposalEndpoint(val repository: ProposalRepository) : Proposta
                                                     .addDetails(Any.pack(details)) // empacota Message do protobuf
                                                     .build()
 
-            LOGGER.info("$statusProto") // Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
-            responseObserver.onError(StatusProto.toStatusRuntimeException(statusProto))
+            LOGGER.info("$statusProto") //Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
+            val error = StatusProto.toStatusRuntimeException(statusProto)
+*/
+
+            responseObserver.onError(HandleConstraintViolationException(e))
             return
         }
 
-
         val response = CreateProposalResponse.newBuilder()
             .setId(proposal.id.toString())
-            .setCreatedAt(proposal.createdAt.let {
-                val instant = it.atZone(ZoneId.of("UTC")).toInstant()
-                Timestamp.newBuilder()
-                    .setSeconds(instant.epochSecond)
-                    .setNanos(instant.nano)
-                    .build()
-            })
+            .setCreatedAt(proposal.createdAt.toGrpcTimestamp())
             .build()
 
         /* Primeiro modelo - retorna um id fake e uma data fake
@@ -97,4 +98,41 @@ open class CreateProposalEndpoint(val repository: ProposalRepository) : Proposta
 
     }
 
+    private fun HandleConstraintViolationException(e: ConstraintViolationException): StatusRuntimeException {
+        val details = BadRequest.newBuilder()
+            .addAllFieldViolations(e.constraintViolations.map {
+                BadRequest.FieldViolation.newBuilder()
+                    .setField(it.propertyPath.last().name) //save.entity.document
+                    .setDescription(it.message) //must be blank
+                    .build()
+            })
+            .build() // cria lista de violations
+
+        val statusProto = com.google.rpc.Status.newBuilder()
+            .setCode(Code.INVALID_ARGUMENT_VALUE)
+            .setMessage("invalid parameters")
+            .addDetails(Any.pack(details)) // empacota Message do protobuf
+            .build()
+
+        LOGGER.info("$statusProto") //Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
+        val error = StatusProto.toStatusRuntimeException(statusProto)
+        return error
+    }
+
+}
+
+fun CreateProposalRequest.toModel() : Proposal {  //extension function
+    return Proposal(name = this.name,
+        document = this.document,
+        email = this.email,
+        address = this.address,
+        salary = BigDecimal(this.salary))
+}
+
+fun LocalDateTime.toGrpcTimestamp() : Timestamp {  // extension function
+    val instant = this.atZone(ZoneId.of("UTC")).toInstant()
+    return Timestamp.newBuilder()
+        .setSeconds(instant.epochSecond)
+        .setNanos(instant.nano)
+        .build()
 }
