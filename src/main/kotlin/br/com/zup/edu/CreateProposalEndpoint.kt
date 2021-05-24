@@ -2,17 +2,19 @@ package br.com.zup.edu
 
 import br.com.zup.edu.createproposal.Proposal
 import br.com.zup.edu.createproposal.ProposalRepository
+import com.google.protobuf.Any
 import com.google.protobuf.Timestamp
+import com.google.rpc.BadRequest
+import com.google.rpc.Code
 import io.grpc.Status
+import io.grpc.protobuf.StatusProto
 import io.grpc.stub.StreamObserver
-import io.micronaut.validation.Validated
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.ZoneId
 import javax.inject.Singleton
 import javax.transaction.Transactional
 import javax.validation.ConstraintViolationException
-import javax.validation.Valid
 
 
 @Singleton
@@ -35,9 +37,24 @@ open class CreateProposalEndpoint(val repository: ProposalRepository) : Proposta
             repository.save(proposal)
         } catch (e: ConstraintViolationException) {
             LOGGER.error("Erro de validação: ${e.message}")
-            responseObserver.onError(Status.INVALID_ARGUMENT
-                                        .withDescription("invalid parameters")
-                                        .asRuntimeException())
+
+            val violations = e.constraintViolations.map {
+                BadRequest.FieldViolation.newBuilder()
+                                        .setField(it.propertyPath.last().name) //save.entity.document
+                                        .setDescription(it.message) //must be blank
+                                        .build()
+            }
+
+            val details = BadRequest.newBuilder().addAllFieldViolations(violations).build() // cria lista de violations
+
+            val statusProto = com.google.rpc.Status.newBuilder()
+                                                    .setCode(Code.INVALID_ARGUMENT_VALUE)
+                                                    .setMessage("invalid parameters")
+                                                    .addDetails(Any.pack(details)) // empacota Message do protobuf
+                                                    .build()
+
+            LOGGER.info("$statusProto") // Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
+            responseObserver.onError(StatusProto.toStatusRuntimeException(statusProto))
             return
         }
 

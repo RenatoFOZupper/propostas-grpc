@@ -7,6 +7,8 @@ import org.hibernate.validator.constraints.br.CPF
 import javax.validation.Constraint
 import javax.validation.Payload
 import javax.validation.ReportAsSingleViolation
+import kotlin.annotation.AnnotationRetention.*
+import kotlin.annotation.AnnotationTarget.*
 import kotlin.reflect.KClass
 
 
@@ -15,8 +17,8 @@ import kotlin.reflect.KClass
 @ReportAsSingleViolation
 @Constraint(validatedBy = [])
 @MustBeDocumented
-@Target(AnnotationTarget.FIELD, AnnotationTarget.PROPERTY_GETTER)
-@Retention(AnnotationRetention.RUNTIME)
+@Target(FIELD, PROPERTY_GETTER)
+@Retention(RUNTIME)
 annotation class CpfOrCnpj(
     val message: String = "document is not a valid CPF or CNPJ",
     val groups: Array<KClass<Any>> = [],
