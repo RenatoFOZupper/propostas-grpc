@@ -2,121 +2,45 @@ package br.com.zup.edu
 
 import br.com.zup.edu.createproposal.Proposal
 import br.com.zup.edu.createproposal.ProposalRepository
-import com.google.protobuf.Any
+import br.com.zup.edu.shared.ErrorHandler
+import br.com.zup.edu.shared.exceptions.ProposalAlreadyExistsException
 import com.google.protobuf.Timestamp
-import com.google.rpc.BadRequest
-import com.google.rpc.Code
-import io.grpc.Status
-import io.grpc.StatusRuntimeException
-import io.grpc.protobuf.StatusProto
 import io.grpc.stub.StreamObserver
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import java.time.ZoneId
+import javax.inject.Inject
 import javax.inject.Singleton
 import javax.transaction.Transactional
-import javax.validation.ConstraintViolationException
 
 
+@ErrorHandler //todos os métodos publicos da classe serao interceptados
 @Singleton
-open class CreateProposalEndpoint(val repository: ProposalRepository) : PropostasGrpcServiceGrpc.PropostasGrpcServiceImplBase(){
+open class CreateProposalEndpoint(@Inject private val repository: ProposalRepository) :
+    PropostasGrpcServiceGrpc.PropostasGrpcServiceImplBase(){
 
     val LOGGER = LoggerFactory.getLogger(this.javaClass)
 
+    @ErrorHandler
     @Transactional
     open override fun create( request: CreateProposalRequest, responseObserver: StreamObserver<CreateProposalResponse>) {
 
-        //Essa lógica falha a nivel de concorrencia, a melhor forma para resolver isso é usando a anotacao
-        // @Column(unique = true) na property da entidade
-        if (repository.existsByDocument(request.document)) {
-            responseObserver.onError(Status.ALREADY_EXISTS
-                                    .withDescription("proposal already exists")
-                                    .asRuntimeException())
-        return
-        }
-
         LOGGER.info("new request: $request")
 
-/*  Primeiro modelo - Converte o request para um objeto proposal dentro do endpoint grpc
-        val proposal = Proposal(name = request.name,
-                                document = request.document,
-                                email = request.email,
-                                address = request.address,
-                                salary = BigDecimal(request.salary))
-*/
-
-        val proposal = try {
-            repository.save(request.toModel()) // extension function
-        } catch (e: ConstraintViolationException) {
-            LOGGER.error("Erro de validação: ${e.message}")
-
-/*      Primeiro modelo - tratando errors
-            val violations = e.constraintViolations.map {
-                BadRequest.FieldViolation.newBuilder()
-                                        .setField(it.propertyPath.last().name) //save.entity.document
-                                        .setDescription(it.message) //must be blank
-                                        .build()
-            }
-
-            val details = BadRequest.newBuilder().addAllFieldViolations(violations).build() // cria lista de violations
-
-            val statusProto = com.google.rpc.Status.newBuilder()
-                                                    .setCode(Code.INVALID_ARGUMENT_VALUE)
-                                                    .setMessage("invalid parameters")
-                                                    .addDetails(Any.pack(details)) // empacota Message do protobuf
-                                                    .build()
-
-            LOGGER.info("$statusProto") //Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
-            val error = StatusProto.toStatusRuntimeException(statusProto)
-*/
-
-            responseObserver.onError(HandleConstraintViolationException(e))
-            return
+        if (repository.existsByDocument(request.document)) {
+            throw ProposalAlreadyExistsException("proposal already exists")
         }
+
+        val proposal = repository.save(request.toModel()) // extension function
 
         val response = CreateProposalResponse.newBuilder()
             .setId(proposal.id.toString())
             .setCreatedAt(proposal.createdAt.toGrpcTimestamp())
             .build()
 
-        /* Primeiro modelo - retorna um id fake e uma data fake
-        val response = CreateProposalResponse.newBuilder()
-                                                .setId(UUID.randomUUID().toString())
-                                                .setCreatedAt(LocalDateTime.now().let {
-                                                    val instant = it.atZone(ZoneId.of("UTC")).toInstant()
-                                                    Timestamp.newBuilder()
-                                                        .setSeconds(instant.epochSecond)
-                                                        .setNanos(instant.nano)
-                                                        .build()
-                                                })
-                                                .build()*/
-
         responseObserver.onNext(response)
         responseObserver.onCompleted()
-
-
-    }
-
-    private fun HandleConstraintViolationException(e: ConstraintViolationException): StatusRuntimeException {
-        val details = BadRequest.newBuilder()
-            .addAllFieldViolations(e.constraintViolations.map {
-                BadRequest.FieldViolation.newBuilder()
-                    .setField(it.propertyPath.last().name) //save.entity.document
-                    .setDescription(it.message) //must be blank
-                    .build()
-            })
-            .build() // cria lista de violations
-
-        val statusProto = com.google.rpc.Status.newBuilder()
-            .setCode(Code.INVALID_ARGUMENT_VALUE)
-            .setMessage("invalid parameters")
-            .addDetails(Any.pack(details)) // empacota Message do protobuf
-            .build()
-
-        LOGGER.info("$statusProto") //Na atual versão do BloomRPC, não é possivel visualizar os metadados de erro da resposta
-        val error = StatusProto.toStatusRuntimeException(statusProto)
-        return error
     }
 
 }
