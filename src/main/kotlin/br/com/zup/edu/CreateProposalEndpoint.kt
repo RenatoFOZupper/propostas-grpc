@@ -25,6 +25,15 @@ open class CreateProposalEndpoint(val repository: ProposalRepository) : Proposta
     @Transactional
     open override fun create( request: CreateProposalRequest, responseObserver: StreamObserver<CreateProposalResponse>) {
 
+        //Essa lógica falha a nivel de concorrencia, a melhor forma para resolver isso é usando a anotacao
+        // @Column(unique = true) na property da entidade
+        if (repository.existsByDocument(request.document)) {
+            responseObserver.onError(Status.ALREADY_EXISTS
+                                    .withDescription("proposal already exists")
+                                    .asRuntimeException())
+        return
+        }
+
         LOGGER.info("new request: $request")
 
         val proposal = Proposal(name = request.name,
