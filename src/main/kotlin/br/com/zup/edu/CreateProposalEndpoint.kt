@@ -4,19 +4,22 @@ import br.com.zup.edu.createproposal.Proposal
 import br.com.zup.edu.createproposal.ProposalRepository
 import com.google.protobuf.Timestamp
 import io.grpc.stub.StreamObserver
+import io.micronaut.validation.Validated
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.time.ZoneId
 import javax.inject.Singleton
 import javax.transaction.Transactional
+import javax.validation.Valid
 
+@Validated
 @Singleton
 open class CreateProposalEndpoint(val repository: ProposalRepository) : PropostasGrpcServiceGrpc.PropostasGrpcServiceImplBase(){
 
     val logger = LoggerFactory.getLogger(this.javaClass)
 
     @Transactional
-    open override fun create(request: CreateProposalRequest, responseObserver: StreamObserver<CreateProposalResponse>) {
+    open override fun create(@Valid request: CreateProposalRequest, responseObserver: StreamObserver<CreateProposalResponse>) {
 
         logger.info("new request: $request")
 
