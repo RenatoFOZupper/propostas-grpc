@@ -1,5 +1,6 @@
 package br.com.zup.edu.createproposal
 
+import br.com.zup.edu.shared.CpfOrCnpj
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import java.util.*
@@ -18,6 +19,7 @@ class Proposal(
     @Column(unique = false)
     val name: String,
 
+    @CpfOrCnpj
     @field: NotBlank
     @Column(unique = false)
     val document: String,
